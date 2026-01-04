@@ -123,3 +123,20 @@
 - [x] Integrate server filters into preview screen
 - [x] Replace CSS-only filters with real image processing
 - [x] Test filter visibility and effectiveness
+
+
+## Live Instruction Listening
+- [x] Set up continuous audio listening with expo-av
+- [x] Implement real-time speech-to-text conversion
+- [x] Create live instruction parser
+- [x] Apply filter changes as user speaks
+- [x] Add visual feedback for recognized instructions
+- [x] Handle background noise and audio quality
+
+## Undo/Redo Functionality
+- [x] Create filter history state management
+- [x] Implement undo/redo stack
+- [x] Add forward button for redo
+- [x] Add back button for undo
+- [x] Update preview when undo/redo is triggered
+- [x] Limit history to last 20 changes

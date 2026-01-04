@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, Image, ScrollView, Platform, ActivityIndicator, Pressable } from "react-native";
+import { View, Text, TouchableOpacity, Image, ScrollView, Platform, ActivityIndicator } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
@@ -7,10 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
-import { ADVANCED_FILTERS, mergeAdjustments, clampAdjustments } from "@/lib/advanced-filters";
-import { useFilterHistory } from "@/hooks/use-filter-history";
-import { useLiveInstructions } from "@/hooks/use-live-instructions";
-import type { FilterAdjustments } from "@/lib/advanced-filters";
+import { ADVANCED_FILTERS } from "@/lib/advanced-filters";
 
 const FILTER_NAMES = Object.keys(ADVANCED_FILTERS);
 
@@ -25,17 +22,6 @@ export default function PreviewScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedImageBase64, setProcessedImageBase64] = useState<string>("");
   const [originalImageBase64, setOriginalImageBase64] = useState<string>("");
-  const [customAdjustments, setCustomAdjustments] = useState<FilterAdjustments>({});
-
-  // History management
-  const filterHistory = useFilterHistory(selectedFilter);
-
-  // Live instruction listening
-  const { isListening, listeningStatus, lastInstruction, toggleListening } = useLiveInstructions(
-    (adjustments) => {
-      handleLiveAdjustment(adjustments);
-    }
-  );
 
   // Load and convert image to base64
   useEffect(() => {
@@ -54,14 +40,17 @@ export default function PreviewScreen() {
     loadImage();
   }, [photoUri]);
 
-  /**
-   * Apply filter using server-side processing
-   */
-  const applyFilterToImage = async (filterName: string, adjustments: FilterAdjustments = {}) => {
-    if (!originalImageBase64) return;
+  // Apply filter using server-side processing
+  const handleFilterSelect = async (filterName: string) => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
 
+    setSelectedFilter(filterName);
     setIsProcessing(true);
+
     try {
+      // Call server to apply filter
       const result = await trpc.filters.applyPreset.useMutation().mutateAsync({
         imageBase64: originalImageBase64,
         filterName: filterName,
@@ -69,7 +58,6 @@ export default function PreviewScreen() {
 
       if (result.success) {
         setProcessedImageBase64(result.imageBase64);
-        filterHistory.addToHistory(adjustments, filterName);
       }
     } catch (error) {
       console.error("Error applying filter:", error);
@@ -81,74 +69,11 @@ export default function PreviewScreen() {
     }
   };
 
-  /**
-   * Handle filter selection
-   */
-  const handleFilterSelect = async (filterName: string) => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    setSelectedFilter(filterName);
-    setCustomAdjustments({});
-    await applyFilterToImage(filterName, {});
-  };
-
-  /**
-   * Handle live instruction adjustments
-   */
-  const handleLiveAdjustment = async (adjustments: Partial<FilterAdjustments>) => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-
-    const merged = mergeAdjustments(customAdjustments, adjustments);
-    const clamped = clampAdjustments(merged);
-    setCustomAdjustments(clamped);
-
-    // Apply the merged adjustments
-    await applyFilterToImage(selectedFilter, clamped);
-  };
-
-  /**
-   * Handle undo
-   */
-  const handleUndo = async () => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    const prevState = filterHistory.undo();
-    if (prevState) {
-      setSelectedFilter(prevState.filterName);
-      setCustomAdjustments(prevState.adjustments);
-      await applyFilterToImage(prevState.filterName, prevState.adjustments);
-    }
-  };
-
-  /**
-   * Handle redo
-   */
-  const handleRedo = async () => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    const nextState = filterHistory.redo();
-    if (nextState) {
-      setSelectedFilter(nextState.filterName);
-      setCustomAdjustments(nextState.adjustments);
-      await applyFilterToImage(nextState.filterName, nextState.adjustments);
-    }
-  };
-
-  /**
-   * Handle save
-   */
   const handleSave = async () => {
     setIsSaving(true);
 
     try {
+      // Save processed image to file system
       const fileName = `flare_${Date.now()}.jpg`;
       const filePath = `${FileSystem.documentDirectory}${fileName}`;
 
@@ -156,6 +81,7 @@ export default function PreviewScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
 
+      // Save metadata to AsyncStorage
       const STORAGE_KEY = "@flare_photos";
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       const photos = stored ? JSON.parse(stored) : [];
@@ -174,6 +100,9 @@ export default function PreviewScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      console.log("Photo saved with filter:", selectedFilter);
+
+      // Navigate back to camera
       router.back();
     } catch (error) {
       console.error("Error saving photo:", error);
@@ -185,9 +114,6 @@ export default function PreviewScreen() {
     }
   };
 
-  /**
-   * Handle retake
-   */
   const handleRetake = () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -198,29 +124,8 @@ export default function PreviewScreen() {
   return (
     <ScreenContainer className="flex-1 bg-background">
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        {/* Live Listening Status */}
-        {isListening && (
-          <View
-            style={{
-              backgroundColor: listeningStatus === "listening" ? "#3B82F6" : colors.primary,
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              borderRadius: 12,
-              marginBottom: 16,
-              marginHorizontal: 16,
-            }}
-          >
-            <Text className="text-white font-semibold text-center">
-              {listeningStatus === "listening" ? "🎤 Listening..." : "⏳ Processing..."}
-            </Text>
-            {lastInstruction && (
-              <Text className="text-white text-sm text-center mt-2">"{lastInstruction}"</Text>
-            )}
-          </View>
-        )}
-
         {/* Preview Image */}
-        <View className="flex-1 items-center justify-center mb-6 px-4">
+        <View className="flex-1 items-center justify-center mb-6">
           {processedImageBase64 ? (
             <Image
               source={{ uri: `data:image/jpeg;base64,${processedImageBase64}` }}
@@ -248,71 +153,6 @@ export default function PreviewScreen() {
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
           )}
-        </View>
-
-        {/* Undo/Redo Controls */}
-        <View className="flex-row gap-3 px-4 mb-6">
-          <Pressable
-            onPress={handleUndo}
-            disabled={!filterHistory.canUndo}
-            style={({ pressed }) => [
-              {
-                flex: 1,
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: filterHistory.canUndo ? colors.surface : colors.border,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 2,
-                borderColor: filterHistory.canUndo ? colors.primary : colors.border,
-                opacity: pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text className="text-2xl">⬅️</Text>
-            <Text className="text-foreground font-semibold text-xs mt-1">Undo</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleRedo}
-            disabled={!filterHistory.canRedo}
-            style={({ pressed }) => [
-              {
-                flex: 1,
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: filterHistory.canRedo ? colors.surface : colors.border,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 2,
-                borderColor: filterHistory.canRedo ? colors.primary : colors.border,
-                opacity: pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text className="text-2xl">➡️</Text>
-            <Text className="text-foreground font-semibold text-xs mt-1">Redo</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={toggleListening}
-            style={({ pressed }) => [
-              {
-                flex: 1,
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: isListening ? "#EF4444" : colors.primary,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: pressed ? 0.8 : 1,
-              },
-            ]}
-          >
-            <Text className="text-2xl">{isListening ? "⏹️" : "🎤"}</Text>
-            <Text className="text-background font-semibold text-xs mt-1">
-              {isListening ? "Stop" : "Listen"}
-            </Text>
-          </Pressable>
         </View>
 
         {/* Filter Selection */}
