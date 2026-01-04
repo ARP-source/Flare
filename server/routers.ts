@@ -4,6 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
+import { analyzeScene, interpretVoiceCommand, generateFilterRecommendations, isGeminiConfigured } from "./gemini-client.js";
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -21,9 +22,6 @@ export const appRouter = router({
 
   // Camera AI features
   camera: router({
-    /**
-     * Subject Detection: Analyze image and detect subject type
-     */
     detectSubject: publicProcedure
       .input(
         z.object({
@@ -77,9 +75,6 @@ export const appRouter = router({
         }
       }),
 
-    /**
-     * Predict Best Style: Based on detected subject, suggest the best color grading style
-     */
     predictBestStyle: publicProcedure
       .input(
         z.object({
@@ -102,6 +97,63 @@ export const appRouter = router({
           reason: `Best for ${input.subject.toLowerCase()} photography`,
         };
       }),
+  }),
+
+  // Gemini AI endpoints for advanced scene analysis and voice commands
+  gemini: router({
+    analyzeScene: publicProcedure
+      .input(z.object({ imageBase64: z.string() }))
+      .mutation(async ({ input }) => {
+        if (!isGeminiConfigured()) {
+          throw new Error("Gemini API not configured");
+        }
+        return await analyzeScene(input.imageBase64);
+      }),
+
+    interpretVoice: publicProcedure
+      .input(
+        z.object({
+          voiceText: z.string(),
+          subject: z.string(),
+          environment: z.string(),
+          colors: z.array(z.string()),
+        })
+      )
+      .mutation(async ({ input }) => {
+        if (!isGeminiConfigured()) {
+          throw new Error("Gemini API not configured");
+        }
+        return await interpretVoiceCommand(input.voiceText, {
+          subject: input.subject,
+          environment: input.environment,
+          colors: input.colors,
+        });
+      }),
+
+    getRecommendations: publicProcedure
+      .input(
+        z.object({
+          subject: z.string(),
+          environment: z.string(),
+          lighting: z.string(),
+          colors: z.array(z.string()),
+        })
+      )
+      .query(async ({ input }) => {
+        if (!isGeminiConfigured()) {
+          throw new Error("Gemini API not configured");
+        }
+        return await generateFilterRecommendations({
+          subject: input.subject,
+          environment: input.environment,
+          lighting: input.lighting,
+          colors: input.colors,
+        });
+      }),
+
+    isConfigured: publicProcedure.query(() => {
+      return { configured: isGeminiConfigured() };
+    }),
   }),
 });
 

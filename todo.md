@@ -72,3 +72,46 @@
 - [x] Test on physical device
 - [x] Add error handling for camera and permissions
 - [x] Add error handling for AI service failures
+
+
+## Selfie Camera Feature
+- [x] Add front/back camera toggle button
+- [x] Implement camera facing state management
+- [x] Update UI to show active camera mode
+
+## Real Image Filters
+- [x] Replace placeholder filters with actual color correction
+- [x] Implement vibrance and saturation adjustments
+- [x] Add contrast and brightness controls
+- [x] Implement shadow/highlight recovery
+- [x] Add color grading with HSL adjustments
+- [x] Optimize filter performance for real-time preview
+
+## Gemini API Integration
+- [x] Store Gemini API key securely
+- [x] Create Gemini API client wrapper
+- [x] Implement scene analysis endpoint
+- [x] Analyze subject, environment, lighting, colors
+- [x] Generate filter recommendations based on scene
+
+## Voice Narration Feature
+- [x] Add microphone recording permission
+- [x] Implement voice recording UI
+- [x] Add speech-to-text conversion
+- [x] Create voice command parser
+- [x] Display transcribed text to user
+
+## Dynamic AI Adjustments
+- [x] Parse user voice commands for intent
+- [x] Extract color preferences from voice input
+- [x] Analyze scene description for context
+- [x] Generate dynamic filter adjustments
+- [x] Apply adjustments in real-time
+- [x] Update preview with voice-based changes
+
+## Performance Optimization
+- [ ] Optimize filter rendering for mobile
+- [ ] Cache Gemini API responses
+- [ ] Implement efficient image processing
+- [ ] Reduce memory usage
+- [ ] Test on low-end devices
