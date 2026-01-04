@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { analyzeScene, interpretVoiceCommand, generateFilterRecommendations, isGeminiConfigured } from "./gemini-client.js";
+import { filterRouter } from "./filter-routes.js";
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -155,6 +156,9 @@ export const appRouter = router({
       return { configured: isGeminiConfigured() };
     }),
   }),
+
+  // Image filter application routes
+  filters: filterRouter,
 });
 
 export type AppRouter = typeof appRouter;

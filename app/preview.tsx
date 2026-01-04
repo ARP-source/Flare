@@ -1,24 +1,15 @@
 import { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, Image, ScrollView, Platform } from "react-native";
+import { View, Text, TouchableOpacity, Image, ScrollView, Platform, ActivityIndicator } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { IconSymbol } from "@/components/ui/icon-symbol";
+import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { applyFilter, getFilterDescription } from "@/lib/filters";
-import type { StyleType } from "@/lib/camera-utils";
+import { trpc } from "@/lib/trpc";
+import { ADVANCED_FILTERS } from "@/lib/advanced-filters";
 
-const STYLES: StyleType[] = [
-  "The Silver Screen",
-  "Classic Chrome",
-  "Portra 400",
-  "Dark Mood",
-  "Editorial Bright",
-  "Eterna",
-];
-
-
+const FILTER_NAMES = Object.keys(ADVANCED_FILTERS);
 
 export default function PreviewScreen() {
   const router = useRouter();
@@ -26,24 +17,53 @@ export default function PreviewScreen() {
   const colors = useColors();
   const photoUri = params.uri as string;
 
-  const [selectedStyle, setSelectedStyle] = useState<StyleType>("The Silver Screen");
+  const [selectedFilter, setSelectedFilter] = useState<string>(FILTER_NAMES[0]);
   const [isSaving, setIsSaving] = useState(false);
-  const [processedImageUri, setProcessedImageUri] = useState<string>(photoUri);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processedImageBase64, setProcessedImageBase64] = useState<string>("");
+  const [originalImageBase64, setOriginalImageBase64] = useState<string>("");
 
-  const handleStyleSelect = async (style: StyleType) => {
+  // Load and convert image to base64
+  useEffect(() => {
+    const loadImage = async () => {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(photoUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        setOriginalImageBase64(base64);
+        setProcessedImageBase64(base64);
+      } catch (error) {
+        console.error("Error loading image:", error);
+      }
+    };
+
+    loadImage();
+  }, [photoUri]);
+
+  // Apply filter using server-side processing
+  const handleFilterSelect = async (filterName: string) => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    setSelectedStyle(style);
 
-    // Apply filter to image
+    setSelectedFilter(filterName);
     setIsProcessing(true);
+
     try {
-      const filtered = await applyFilter(photoUri, style);
-      setProcessedImageUri(filtered);
+      // Call server to apply filter
+      const result = await trpc.filters.applyPreset.useMutation().mutateAsync({
+        imageBase64: originalImageBase64,
+        filterName: filterName,
+      });
+
+      if (result.success) {
+        setProcessedImageBase64(result.imageBase64);
+      }
     } catch (error) {
       console.error("Error applying filter:", error);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -53,15 +73,23 @@ export default function PreviewScreen() {
     setIsSaving(true);
 
     try {
-      // Save photo to AsyncStorage
-      const STORAGE_KEY = "@ai_camera_photos";
+      // Save processed image to file system
+      const fileName = `flare_${Date.now()}.jpg`;
+      const filePath = `${FileSystem.documentDirectory}${fileName}`;
+
+      await FileSystem.writeAsStringAsync(filePath, processedImageBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Save metadata to AsyncStorage
+      const STORAGE_KEY = "@flare_photos";
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       const photos = stored ? JSON.parse(stored) : [];
 
       const newPhoto = {
         id: Date.now().toString(),
-        uri: processedImageUri,
-        style: selectedStyle,
+        uri: filePath,
+        filter: selectedFilter,
         timestamp: Date.now(),
       };
 
@@ -72,7 +100,7 @@ export default function PreviewScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      console.log("Photo saved with style:", selectedStyle);
+      console.log("Photo saved with filter:", selectedFilter);
 
       // Navigate back to camera
       router.back();
@@ -93,193 +121,111 @@ export default function PreviewScreen() {
     router.back();
   };
 
-  if (!photoUri) {
-    return (
-      <View className="flex-1 bg-background items-center justify-center">
-        <Text className="text-foreground text-lg">No photo to preview</Text>
-      </View>
-    );
-  }
-
   return (
-    <View className="flex-1 bg-background">
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: Platform.OS === "ios" ? 50 : 20,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <TouchableOpacity onPress={handleRetake} style={{ padding: 8 }}>
-          <IconSymbol name="chevron.left.forwardslash.chevron.right" size={24} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text className="text-foreground text-lg font-semibold">Preview</Text>
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderRadius: 8,
-            backgroundColor: colors.primary,
-            opacity: isSaving ? 0.6 : 1,
-          }}
-        >
-          <Text className="text-background font-semibold">
-            {isSaving ? "Saving..." : "Save"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+    <ScreenContainer className="flex-1 bg-background">
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+        {/* Preview Image */}
+        <View className="flex-1 items-center justify-center mb-6">
+          {processedImageBase64 ? (
+            <Image
+              source={{ uri: `data:image/jpeg;base64,${processedImageBase64}` }}
+              style={{
+                width: "100%",
+                height: 400,
+                borderRadius: 16,
+                marginBottom: 16,
+              }}
+              resizeMode="cover"
+            />
+          ) : (
+            <ActivityIndicator size="large" color={colors.primary} />
+          )}
 
-      {/* Photo Preview */}
-      <View className="flex-1 items-center justify-center p-4">
-        <Image
-          source={{ uri: processedImageUri }}
-          style={{
-            width: "100%",
-            aspectRatio: 3 / 4,
-            borderRadius: 12,
-          }}
-          resizeMode="cover"
-        />
-        {/* Style badge overlay */}
-        <View
-          style={{
-            position: "absolute",
-            bottom: 24,
-            left: 24,
-            backgroundColor: "rgba(0, 0, 0, 0.8)",
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: colors.secondary,
-          }}
-        >
-          <Text className="text-white text-xs font-medium">{selectedStyle}</Text>
+          {isProcessing && (
+            <View
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: [{ translateX: -25 }, { translateY: -25 }],
+              }}
+            >
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
         </View>
-      </View>
 
-      {/* Style Carousel */}
-      <View
-        style={{
-          paddingVertical: 16,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-        }}
-      >
-        <Text className="text-foreground text-sm font-semibold px-4 mb-3">
-          Professional Styles
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            gap: 12,
-          }}
-        >
-          {STYLES.map((style) => {
-            const isSelected = style === selectedStyle;
-            return (
+        {/* Filter Selection */}
+        <View className="px-4 mb-6">
+          <Text className="text-foreground text-lg font-bold mb-4">Choose Filter</Text>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 12 }}
+            style={{ marginBottom: 16 }}
+          >
+            {FILTER_NAMES.map((filterName) => (
               <TouchableOpacity
-                key={style}
-                onPress={() => handleStyleSelect(style)}
+                key={filterName}
+                onPress={() => handleFilterSelect(filterName)}
                 style={{
-                  alignItems: "center",
-                  gap: 6,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderRadius: 20,
+                  backgroundColor: selectedFilter === filterName ? colors.primary : colors.surface,
+                  borderWidth: 2,
+                  borderColor: selectedFilter === filterName ? colors.primary : colors.border,
                 }}
               >
-                {/* Style Thumbnail */}
-                <View
-                  style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: 12,
-                    backgroundColor: colors.surface,
-                    borderWidth: isSelected ? 2 : 1,
-                    borderColor: isSelected ? colors.secondary : colors.border,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
+                <Text
+                  className={selectedFilter === filterName ? "text-background font-semibold" : "text-foreground font-semibold"}
+                  numberOfLines={1}
                 >
-                  <Text className="text-foreground text-2xl">
-                    {style === "The Silver Screen" && "🎬"}
-                    {style === "Classic Chrome" && "📷"}
-                    {style === "Portra 400" && "🌅"}
-                    {style === "Dark Mood" && "🌙"}
-                    {style === "Editorial Bright" && "☀️"}
-                    {style === "Eterna" && "🎞️"}
-                  </Text>
-                </View>
-                {/* Style Name */}
-                <View style={{ width: 80, alignItems: "center" }}>
-                  <Text
-                    className="text-xs font-medium text-center"
-                    style={{
-                      color: isSelected ? colors.secondary : colors.muted,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {style}
-                  </Text>
-                </View>
+                  {filterName}
+                </Text>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-        <Text className="text-muted text-xs px-4 mt-2">
-          {getFilterDescription(selectedStyle)}
-        </Text>
-      </View>
+            ))}
+          </ScrollView>
+        </View>
 
-      {/* Action Buttons */}
-      <View
-        style={{
-          flexDirection: "row",
-          gap: 12,
-          paddingHorizontal: 16,
-          paddingBottom: Platform.OS === "ios" ? 32 : 16,
-          paddingTop: 12,
-        }}
-      >
-        <TouchableOpacity
-          onPress={handleRetake}
-          style={{
-            flex: 1,
-            paddingVertical: 16,
-            borderRadius: 12,
-            backgroundColor: colors.surface,
-            borderWidth: 1,
-            borderColor: colors.border,
-            alignItems: "center",
-          }}
-        >
-          <Text className="text-foreground font-semibold">Retake</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{
-            flex: 1,
-            paddingVertical: 16,
-            borderRadius: 12,
-            backgroundColor: colors.primary,
-            alignItems: "center",
-            opacity: isSaving ? 0.6 : 1,
-          }}
-        >
-          <Text className="text-background font-semibold">
-            {isSaving ? "Saving..." : "Save Photo"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+        {/* Action Buttons */}
+        <View className="flex-row gap-4 px-4 mb-8">
+          <TouchableOpacity
+            onPress={handleRetake}
+            style={{
+              flex: 1,
+              paddingVertical: 14,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              borderWidth: 2,
+              borderColor: colors.border,
+              alignItems: "center",
+            }}
+          >
+            <Text className="text-foreground font-semibold">Retake</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving || isProcessing}
+            style={{
+              flex: 1,
+              paddingVertical: 14,
+              borderRadius: 12,
+              backgroundColor: colors.primary,
+              alignItems: "center",
+              opacity: isSaving || isProcessing ? 0.6 : 1,
+            }}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text className="text-background font-semibold">Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </ScreenContainer>
   );
 }
