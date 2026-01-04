@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Default to dark theme */
+  --color-primary: theme('colors.primary.dark');
+  --color-secondary: theme('colors.secondary.dark');
+  --color-background: theme('colors.background.dark');
+  --color-surface: theme('colors.surface.dark');
+  --color-foreground: theme('colors.foreground.dark');
+  --color-muted: theme('colors.muted.dark');
+  --color-border: theme('colors.border.dark');
+  --color-success: theme('colors.success.dark');
+  --color-warning: theme('colors.warning.dark');
+  --color-error: theme('colors.error.dark');
+  --color-accent: theme('colors.accent.dark');
+  --color-accentPurple: theme('colors.accentPurple.dark');
+}
+
+:root:not([data-theme='dark']) {
+  /* Light theme overrides (optional) */
+  --color-primary: theme('colors.primary.light');
+  --color-secondary: theme('colors.secondary.light');
+  --color-background: theme('colors.background.light');
+  --color-surface: theme('colors.surface.light');
+  --color-foreground: theme('colors.foreground.light');
+  --color-muted: theme('colors.muted.light');
+  --color-border: theme('colors.border.light');
+  --color-success: theme('colors.success.light');
+  --color-warning: theme('colors.warning.light');
+  --color-error: theme('colors.error.light');
+  --color-accent: theme('colors.accent.light');
+  --color-accentPurple: theme('colors.accentPurple.light');
+}
+
+:root[data-theme='dark'] {
+  --color-primary: theme('colors.primary.dark');
+  --color-secondary: theme('colors.secondary.dark');
+  --color-background: theme('colors.background.dark');
+  --color-surface: theme('colors.surface.dark');
+  --color-foreground: theme('colors.foreground.dark');
+  --color-muted: theme('colors.muted.dark');
+  --color-border: theme('colors.border.dark');
+  --color-success: theme('colors.success.dark');
+  --color-warning: theme('colors.warning.dark');
+  --color-error: theme('colors.error.dark');
+  --color-accent: theme('colors.accent.dark');
+  --color-accentPurple: theme('colors.accentPurple.dark');
+}

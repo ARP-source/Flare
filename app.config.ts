@@ -13,10 +13,10 @@ const schemeFromBundleId = `manus${timestamp}`;
 const env = {
   // App branding - update these values directly (do not use env vars)
   appName: "AI Camera Pro",
-  appSlug: "ai-camera-pro",
+  appSlug: "{{project_name}}",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663277238227/NTKieOFLSSenQDJz.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -68,6 +68,12 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-camera",
+      {
+        cameraPermission: "Allow $(PRODUCT_NAME) to access your camera for taking photos.",
+      },
+    ],
+    [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
@@ -86,7 +92,7 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#000000",
         dark: {
           backgroundColor: "#000000",
         },
